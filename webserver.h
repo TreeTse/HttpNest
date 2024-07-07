@@ -11,9 +11,11 @@
 #include <stdlib.h>
 #include <cassert>
 #include <sys/epoll.h>
+#include <memory>
 
 #include "./threadpool/threadpool.h"
 #include "./http/http_conn.h"
+#include "epoller.h"
 
 const int MAX_FD = 65536;           //max file descriptors
 const int MAX_EVENT_NUMBER = 10000; //maximum number of events
@@ -40,11 +42,11 @@ public:
     bool DealWithSignal(bool& timeout, bool& stop_server);
     void DealWithRead(int sockfd);
     void DealWithWrite(int sockfd);
+    static int SetFdNonBlocking(int fd);
 
 public:
     int listenFd_;
     int port_;
-    int epollFd_;
     int pipeFd_[2];
     char *root_;
     int asyncWrite_;
@@ -71,5 +73,7 @@ public:
 
     ClientData *usersTimer_;
     Utils utils_;
+
+    std::unique_ptr<Epoller> epoller_;
 };
 #endif

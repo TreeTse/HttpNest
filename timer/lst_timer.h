@@ -4,8 +4,6 @@
 #include <unistd.h>
 #include <signal.h>
 #include <sys/types.h>
-#include <sys/epoll.h>
-#include <fcntl.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -69,8 +67,6 @@ public:
     Utils() {}
     ~Utils() {}
     void Init(int timeslot);
-    int SetNonBlocking(int fd);
-    void Addfd(int epollfd, int fd, bool one_shot, int trig_mode);
     static void SigHandler(int sig);
     void Addsig(int sig, void(handler)(int), bool restart = true);
     void TimerHandler();

@@ -139,34 +139,6 @@ void Utils::Init(int timeslot)
     timeslot_ = timeslot;
 }
 
-int Utils::SetNonBlocking(int fd)
-{
-    int oldOption = fcntl(fd, F_GETFL);
-    int newOption = oldOption | O_NONBLOCK;
-    fcntl(fd, F_SETFL, newOption);
-    return oldOption;
-}
-
-/* The kernel event table registers read events, 
- * whether in ET mode, whether to enable EPOLLONESHOT
- */
-void Utils::Addfd(int epollfd, int fd, bool one_shot, int trig_mode)
-{
-    epoll_event event;
-    event.data.fd = fd;
-
-    if (1 == trig_mode)
-        event.events = EPOLLIN | EPOLLET | EPOLLRDHUP;
-    else
-        event.events = EPOLLIN | EPOLLRDHUP;
-
-    if (one_shot)
-        event.events |= EPOLLONESHOT; // EPOLLONESHOT: each socket is handled by only one thread at any time
-    
-    epoll_ctl(epollfd, EPOLL_CTL_ADD, fd, &event);
-    SetNonBlocking(fd);
-}
-
 /* Signal handling functions only send signals to notify the main loop, 
  * which shortens the asyn execution time and reduces the impact on the main program 
  */

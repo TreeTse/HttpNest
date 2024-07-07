@@ -1,6 +1,6 @@
 #include "webserver.h"
 
-WebServer::WebServer()
+WebServer::WebServer(): epoller_(new Epoller())
 {
     users_ = new HttpConn[MAX_FD];
 
@@ -17,7 +17,6 @@ WebServer::WebServer()
 
 WebServer::~WebServer()
 {
-    close(epollFd_);
     close(listenFd_);
     close(pipeFd_[1]);
     close(pipeFd_[0]);
@@ -114,12 +113,14 @@ void WebServer::EventListen()
 
     utils_.Init(TIMESLOT);
 
-    epoll_event events[MAX_EVENT_NUMBER];
-    epollFd_ = epoll_create(5);
-    assert(epollFd_ != -1);
+    ret = epoller_->AddFd(listenFd_, false, optListenTrigMode_);
+    if (ret == 0) {
+        LOG_ERROR("add listenfd error");
+        /////////////////////////todo
+    }
+    SetFdNonBlocking(listenFd_);
 
-    utils_.Addfd(epollFd_, listenFd_, false, optListenTrigMode_);
-    HttpConn::epollFd_ = epollFd_;
+    //HttpConn::epollFd_ = epollFd_;
 
     ret = socketpair(PF_UNIX, SOCK_STREAM, 0, pipeFd_);
     assert(ret != -1);
@@ -129,8 +130,13 @@ void WebServer::EventListen()
      * At this time, the execution time of signal processing will be further increased. 
      * For this reason, it is modified to non-blocking.
      */
-    utils_.SetNonBlocking(pipeFd_[1]);
-    utils_.Addfd(epollFd_, pipeFd_[0], false, 0);
+    SetFdNonBlocking(pipeFd_[1]);
+    ret = epoller_->AddFd(pipeFd_[0], false, 0);
+    if (ret == 0) {
+        LOG_ERROR("add pipefd error");
+        /////////////////////////todo
+    }
+    SetFdNonBlocking(pipeFd_[0]);
 
     utils_.Addsig(SIGPIPE, SIG_IGN);
     utils_.Addsig(SIGALRM, utils_.SigHandler, false);
@@ -139,7 +145,7 @@ void WebServer::EventListen()
     alarm(TIMESLOT);
 
     Utils::pipeFd_ = pipeFd_;
-    Utils::epollFd_ = epollFd_;
+    //Utils::epollFd_ = epollFd_;
 }
 
 void WebServer::Timer(int connfd, struct sockaddr_in client_address)
@@ -315,15 +321,16 @@ void WebServer::EventLoop()
     bool stopServer = false;
 
     while (!stopServer) {
-        int number = epoll_wait(epollFd_, events_, MAX_EVENT_NUMBER, -1);
-        if (number < 0 && errno != EINTR) {
+        int eventCnt = epoller_->Wait(-1);
+        if (eventCnt < 0 && errno != EINTR) {
             LOG_ERROR("%s", "epoll failure");
             break;
         }
 
         /* Handle ready events */
-        for (int i = 0; i < number; i++) {
-            int sockfd = events_[i].data.fd;
+        for (int i = 0; i < eventCnt; i++) {
+            int sockfd = epoller_->GetEventFd(i);
+            uint32_t events = epoller_->GetEvents(i);
 
             // Listen for new user connections
             if (sockfd == listenFd_) {
@@ -332,21 +339,21 @@ void WebServer::EventLoop()
                     continue;
             }
             // Exception, close the client connection and delete the user's timer
-            else if (events_[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {
+            else if (events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {
                 UtilTimer *timer = usersTimer_[sockfd].timer;
                 DealTimer(timer, sockfd);
             }
             // Handle signal
-            else if ((sockfd == pipeFd_[0]) && (events_[i].events & EPOLLIN)) {
+            else if ((sockfd == pipeFd_[0]) && (events & EPOLLIN)) {
                 bool flag = DealWithSignal(timeout, stopServer);
                 if (false == flag)
                     LOG_ERROR("%s", "DealWithSignal failure");
             }
             // Process data received on the client connection
-            else if (events_[i].events & EPOLLIN) {
+            else if (events & EPOLLIN) {
                 DealWithRead(sockfd);
             }
-            else if (events_[i].events & EPOLLOUT) {
+            else if (events & EPOLLOUT) {
                 DealWithWrite(sockfd);
             }
         }
@@ -357,4 +364,10 @@ void WebServer::EventLoop()
             timeout = false;
         }
     }
+}
+
+int WebServer::SetFdNonBlocking(int fd)
+{
+    assert(fd > 0);
+    return fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
 }

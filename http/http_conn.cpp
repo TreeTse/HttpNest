@@ -106,7 +106,7 @@ void HttpConn::Init(int sockfd, const sockaddr_in &addr, char *root, int trig_mo
     sockFd_ = sockfd;
     address_ = addr;
 
-    Addfd(epollFd_, sockfd, true, trigMode_);
+    Addfd(epollFd_, sockfd, true, trigMode_);//////todo
     userCount_++;
 
     docRoot_ = root;
