@@ -1,61 +1,68 @@
 #include "epoller.h"
 
-Epoller::Epoller(int maxEvent): epollFd_(epoll_create(512)), events_(maxEvent) 
+Epoller::Epoller(int maxEvent): events_(maxEvent)
 {
-    assert(epollFd_ >= 0 && events_.size() > 0);
+    assert(events_.size() > 0);
+    if ((epollfd_ = epoll_create(1)) == -1) {
+        perror("epoll_create failed");
+        exit(-1);
+    }
 }
 
 Epoller::~Epoller()
 {
-    close(epollFd_);
+    close(epollfd_);
 }
 
-/* The kernel event table registers read events, 
- * whether in ET mode, whether to enable EPOLLONESHOT
- */
-bool Epoller::AddFd(int fd, bool oneShot, int trigMode)
+void Epoller::UpdateChannel(Channel *ch)
 {
-    if (fd < 0) return false;
     epoll_event ev = {0};
-    ev.data.fd = fd;
-    if (1 == trigMode)
-        ev.events = EPOLLIN | EPOLLET | EPOLLRDHUP;
-    else
-        ev.events = EPOLLIN | EPOLLRDHUP;
-    if (oneShot)
-        ev.events |= EPOLLONESHOT; // EPOLLONESHOT: each socket is handled by only one thread at any time
-    return 0 == epoll_ctl(epollFd_, EPOLL_CTL_ADD, fd, &ev);
+    ev.data.ptr = ch;
+    ev.events = ch->Events();
+
+    if (ch->InEpoll()) {
+        if (epoll_ctl(epollfd_, EPOLL_CTL_MOD, ch->fd(), &ev) == -1) {
+            perror("epoll_ctl failed");
+            exit(-1);
+        }
+    } else {
+        if (epoll_ctl(epollfd_, EPOLL_CTL_ADD, ch->fd(), &ev) == -1) {
+            perror("epoll_ctl failed");
+            exit(-1);
+        }
+        ch->SetInEpoll(true);
+    }
 }
 
-bool Epoller::ModFd(int fd, uint32_t events)
+void Epoller::RemoveChannel(Channel *ch)
 {
-    if(fd < 0) return false;
-    epoll_event ev = {0};
-    ev.data.fd = fd;
-    ev.events = events;
-    return 0 == epoll_ctl(epollFd_, EPOLL_CTL_MOD, fd, &ev);
+    if (ch->InEpoll()) {
+        if (epoll_ctl(epollfd_, EPOLL_CTL_DEL, ch->fd(), 0) == -1) {
+            perror("epoll_ctl failed");
+            exit(-1);
+        }
+    }
 }
 
-bool Epoller::DelFd(int fd)
+std::vector<Channel *> Epoller::Poll(int timeoutMs)
 {
-    if(fd < 0) return false;
-    epoll_event ev = {0};
-    return 0 == epoll_ctl(epollFd_, EPOLL_CTL_DEL, fd, &ev);
-}
+    std::vector<Channel *> channels;
 
-int Epoller::Wait(int timeoutMs)
-{
-    return epoll_wait(epollFd_, &events_[0], static_cast<int>(events_.size()), timeoutMs);
-}
+    int eventCnt = epoll_wait(epollfd_, &events_[0], static_cast<int>(events_.size()), timeoutMs);
 
-int Epoller::GetEventFd(size_t i) const
-{
-    assert(i < events_.size() && i >= 0);
-    return events_[i].data.fd;
-}
+    if (eventCnt < 0) {
+        perror("epoll_wait failed");
+        exit(-1);
+    }
+    if (eventCnt == 0) {
+        return channels;
+    }
 
-uint32_t Epoller::GetEvents(size_t i) const
-{
-    assert(i < events_.size() && i >= 0);
-    return events_[i].events;
+    for (int i = 0; i < eventCnt; i++) {
+        Channel *ch = (Channel *)events_[i].data.ptr;
+        ch->SetRevents(events_[i].events);
+        channels.push_back(ch);
+    }
+
+    return channels;
 }

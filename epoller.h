@@ -4,7 +4,11 @@
 #include <sys/epoll.h>
 #include <assert.h>
 #include <unistd.h>
+#include <string.h>
 #include <vector>
+#include "channel.h"
+
+class Channel;
 
 class Epoller {
 public:
@@ -12,20 +16,14 @@ public:
 
     ~Epoller();
 
-    bool AddFd(int fd, bool oneShot, int trigMode);
+    void UpdateChannel(Channel *ch);
 
-    bool ModFd(int fd, uint32_t events);
+    void RemoveChannel(Channel *ch);
 
-    bool DelFd(int fd);
-
-    int Wait(int timeoutMs = -1);
-
-    int GetEventFd(size_t i) const;
-
-    uint32_t GetEvents(size_t i) const;
+    std::vector<Channel *> Poll(int timeoutMs = -1);
 
 private:
-    int epollFd_;
+    int epollfd_ = -1;
 
     std::vector<struct epoll_event> events_;
 };

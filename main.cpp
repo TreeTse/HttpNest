@@ -1,33 +1,34 @@
+#include <signal.h>
 #include "config.h"
+
+WebServer *webserver;
+
+void Stop(int sig)
+{
+    LOG_DEBUG("sig=%d\n", sig);
+    webserver->Stop();
+    delete webserver;
+    LOG_DEBUG("webserver stopped.\n");
+    exit(0);
+}
 
 int main(int argc, char *argv[])
 {
-    //database info
-    string userName = "root";
-    string passwd = "xsh";
-    string databasename = "auroradb";
-
     //command line
     Config config;
     config.ParseArg(argc, argv);
 
-    WebServer server;
+    if (!config.isCloseLog_) {
+        Log::GetInstance()->Init(0, "./mylog", ".log", 80000);
+    }
 
-    server.Init(config.port_, userName, passwd, databasename, config.isAsyncWrite_, 
-                config.optLinger_, config.trigMode_,  config.sqlNum_,  config.threadNum_, 
-                config.isCloseLog_, config.actorModel_);
-    
-    server.InitLogger();
+    signal(SIGTERM, Stop);
+    signal(SIGINT, Stop);
 
-    server.InitSqlPool();
+    webserver = new WebServer(config.ip_, config.port_, 10000, config.optLinger_, "root", "xsh", "auroradb",
+                     config.sqlNum_, 6, 0);
 
-    server.InitThreadPool();
-
-    server.TrigMode();
-
-    server.EventListen();
-
-    server.EventLoop();
+    webserver->Start();
 
     return 0;
 }

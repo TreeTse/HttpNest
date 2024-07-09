@@ -1,6 +1,7 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+#include <string>
 #include "webserver.h"
 
 using namespace std;
@@ -12,16 +13,12 @@ public:
     ~Config(){};
     void ParseArg(int argc, char*argv[]);
 
+    string ip_;
     int port_;
-    int isAsyncWrite_;
-    int trigMode_;
-    int listenTrigMode_;
-    int connTrigMode_;
     int optLinger_;
     int sqlNum_;
     int threadNum_;
     int isCloseLog_;
-    int actorModel_;
 };
 
 #endif

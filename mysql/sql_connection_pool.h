@@ -1,56 +1,46 @@
 #ifndef _CONNECTION_POOL_
 #define _CONNECTION_POOL_
 
-#include <stdio.h>
-#include <list>
 #include <mysql.h>
-#include <error.h>
-#include <string.h>
-#include <iostream>
-#include <string>
-#include "../lock/locker.h"
+#include <queue>
+#include <semaphore.h>
 #include "../log/log.h"
 
-using namespace std;
-
-class ConnectionPool
+class SqlConnPool
 {
 public:
+	void Init(const char *host, const char *user, const char *password, const char *dbname, int port, int maxConn);
+
+	static SqlConnPool *GetInstance();
+
 	MYSQL *GetConnection();
-	bool ReleaseConnection(MYSQL *conn);
-	int GetFreeConn();
+
+	void ReleaseConnection(MYSQL *conn);
+
+	int GetFreeConnCount();
+
 	void DestroyPool();
-	static ConnectionPool *GetInstance();
-	void Init(string url, string user, string password, string dbname, int port, int max_conn, int close_log);
 
 private:
-	ConnectionPool();
-	~ConnectionPool();
-	int maxConn_;
-	int curConn_;
-	int freeConn_;
-	Locker lock_;
-	list<MYSQL *> connList_;
-	Sem reserve_;
+	SqlConnPool();
 
-public:
-	string url_;
-	string port_;
-	string user_;
-	string passWord_;
-	string databaseName_;
-	int optCloseLog_;
+	~SqlConnPool();
+
+	int maxConn_;
+	std::queue<MYSQL *> connQue_;
+	sem_t semId_;
+	std::mutex mtx_;
 };
 
-class ConnectionRAII{
+class SqlConnRAII{
 
 public:
-	ConnectionRAII(MYSQL **con, ConnectionPool *connPool);
-	~ConnectionRAII();
+	SqlConnRAII(MYSQL **con, SqlConnPool *connPool);
+	~SqlConnRAII();
 	
 private:
 	MYSQL *conRAII_;
-	ConnectionPool *poolRAII_;
+	SqlConnPool *poolRAII_;
 };
 
 #endif

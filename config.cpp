@@ -2,20 +2,10 @@
 
 Config::Config()
 {
+    ip_ = "127.0.0.1";
+
     //default 9002
     port_ = 9002;
-
-    //default sync
-    isAsyncWrite_ = 0;
-
-    //default listenfd LT + connfd LT
-    trigMode_ = 0;
-
-    //listenfd default ET
-    listenTrigMode_ = 1;
-
-    //connfd default ET
-    connTrigMode_ = 1;
 
     //default enable
     optLinger_ = 1;
@@ -28,27 +18,16 @@ Config::Config()
 
     //default close
     isCloseLog_ = 1;
-
-    //default proactor(0)
-    actorModel_ = 0;
 }
 
 void Config::ParseArg(int argc, char*argv[])
 {
     int opt;
-    const char *str = "p:l:m:o:s:t:c:a:";
+    const char *str = "p:o:s:t:c:a:i:";
     while ((opt = getopt(argc, argv, str)) != -1) {
         switch (opt) {
             case 'p': {
                 port_ = atoi(optarg);
-                break;
-            }
-            case 'l': {
-                isAsyncWrite_ = atoi(optarg);
-                break;
-            }
-            case 'm': {
-                trigMode_ = atoi(optarg);
                 break;
             }
             case 'o': {
@@ -67,8 +46,8 @@ void Config::ParseArg(int argc, char*argv[])
                 isCloseLog_ = atoi(optarg);
                 break;
             }
-            case 'a': {
-                actorModel_ = atoi(optarg);
+            case 'i': {
+                ip_ = optarg;
                 break;
             }
             default:

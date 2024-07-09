@@ -1,123 +1,94 @@
-#include <stdio.h>
-#include <string>
-#include <string.h>
-#include <stdlib.h>
-#include <list>
-#include <pthread.h>
-#include <iostream>
 #include "sql_connection_pool.h"
 
-using namespace std;
+SqlConnPool::SqlConnPool() {}
 
-ConnectionPool::ConnectionPool()
+SqlConnPool *SqlConnPool::GetInstance()
 {
-	curConn_ = 0;
-	freeConn_ = 0;
-}
-
-ConnectionPool *ConnectionPool::GetInstance()
-{
-	static ConnectionPool connPool;
+	static SqlConnPool connPool;
 	return &connPool;
 }
 
-void ConnectionPool::Init(string url, string user, string password, string dbname, 
-						  int port, int max_conn, int close_log)
+void SqlConnPool::Init(const char *host, const char *user, const char *password, const char *dbname,
+						  int port, int maxConn)
 {
-	url_ = url;
-	port_ = port;
-	user_ = user;
-	passWord_ = password;
-	databaseName_ = dbname;
-	optCloseLog_ = close_log;
-
-	for (int i = 0; i < max_conn; i++) {
-		MYSQL *con = NULL;
+	assert(maxConn > 0);
+	for (int i = 0; i < maxConn; i++) {
+		MYSQL *con = nullptr;
 		con = mysql_init(con);
-		if (con == NULL) {
-			LOG_ERROR("MySQL Error");
+		if (!con) {
+			LOG_ERROR("MySQL Init Error");
 			exit(1);
 		}
-		con = mysql_real_connect(con, url.c_str(), user.c_str(), password.c_str(), dbname.c_str(), port, NULL, 0);
-		if (con == NULL) {
-			LOG_ERROR("MySQL Error");
+		con = mysql_real_connect(con, host, user, password, dbname, port, nullptr, 0);
+		if (!con) {
+			LOG_ERROR("MySql Connect Error");
 			exit(1);
 		}
-		connList_.push_back(con);
-		++freeConn_;
+		connQue_.push(con);
 	}
-
-	reserve_ = Sem(freeConn_);
-	maxConn_ = freeConn_;
+	maxConn_ = maxConn;
+	LOG_DEBUG("SqlConnPool init success");
+	sem_init(&semId_, 0, maxConn_);
 }
 
-MYSQL *ConnectionPool::GetConnection()
+MYSQL *SqlConnPool::GetConnection()
 {
-	MYSQL *con = NULL;
-
-	if (0 == connList_.size())
-		return NULL;
-
-	reserve_.Wait();
-	lock_.Lock();
-	con = connList_.front();
-	connList_.pop_front();
-	--freeConn_;
-	++curConn_;
-	lock_.Unlock();
+	MYSQL *con = nullptr;
+	if (connQue_.empty()) {
+		LOG_WARN("SqlConnPool busy!");
+		return nullptr;
+	}
+	sem_wait(&semId_);
+	{
+		std::lock_guard<std::mutex> locker(mtx_);
+		con = connQue_.front();
+		connQue_.pop();
+	}
+	assert(con);
 	return con;
 }
 
-bool ConnectionPool::ReleaseConnection(MYSQL *con)
+void SqlConnPool::ReleaseConnection(MYSQL *con)
 {
-	if (NULL == con)
-		return false;
-
-	lock_.Lock();
-	connList_.push_back(con);
-	++freeConn_;
-	--curConn_;
-	lock_.Unlock();
-
-	reserve_.Post();
-	return true;
+	assert(con);
+	std::lock_guard<std::mutex> locker(mtx_);
+	connQue_.push(con);
+	sem_post(&semId_);
 }
 
-void ConnectionPool::DestroyPool()
+void SqlConnPool::DestroyPool()
 {
-	lock_.Lock();
-	if (connList_.size() > 0) {
-		list<MYSQL *>::iterator it;
-		for (it = connList_.begin(); it != connList_.end(); ++it) {
-			MYSQL *con = *it;
-			mysql_close(con);
-		}
-		curConn_ = 0;
-		freeConn_ = 0;
-		connList_.clear();
+	std::lock_guard<std::mutex> locker(mtx_);
+	while (!connQue_.empty()) {
+		auto sql = connQue_.front();
+		connQue_.pop();
+		mysql_close(sql);
 	}
-	lock_.Unlock();
+	mysql_library_end();
 }
 
-int ConnectionPool::GetFreeConn()
+int SqlConnPool::GetFreeConnCount()
 {
-	return this->freeConn_;
+	std::lock_guard<std::mutex> locker(mtx_);
+	return connQue_.size();
 }
 
-ConnectionPool::~ConnectionPool()
+SqlConnPool::~SqlConnPool()
 {
 	DestroyPool();
 }
 
-ConnectionRAII::ConnectionRAII(MYSQL **sql, ConnectionPool *connPool)
+SqlConnRAII::SqlConnRAII(MYSQL **sql, SqlConnPool *connPool)
 {
+	assert(connPool);
 	*sql = connPool->GetConnection();
-	
 	conRAII_ = *sql;
 	poolRAII_ = connPool;
 }
 
-ConnectionRAII::~ConnectionRAII()
+SqlConnRAII::~SqlConnRAII()
 {
-	poolRAII_->ReleaseConnection(conRAII_);
+	if (conRAII_) {
+		poolRAII_->ReleaseConnection(conRAII_);
+	}
 }

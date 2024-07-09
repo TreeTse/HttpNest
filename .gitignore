@@ -1,3 +1,6 @@
 server
 .vscode/
 *ServerLog
+mylog
+core
+client
