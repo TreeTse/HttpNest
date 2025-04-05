@@ -1,0 +1,21 @@
+{
+    "name" : "http server",
+    "cpu_start" : 0,
+    "threads" : 4,
+    "cpus" : 4,
+    "log" :
+    {
+        "level" : "ERROR",
+        "name" : "http.log",
+        "path" : "../log/"
+    },
+    "services" :
+    [
+        {
+            "addr" : "0.0.0.0",
+            "port" : 8080,
+            "protocol" : "http",
+            "transport" : "tcp"
+        }
+    ]
+}

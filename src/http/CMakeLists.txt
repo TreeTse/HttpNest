@@ -1,0 +1,5 @@
+aux_source_directory(. DIR_LIB_SRCS)
+aux_source_directory(base DIR_LIB_SRCS)
+aux_source_directory (sample DIR_LIB_SRCS)
+add_library (http ${DIR_LIB_SRCS})
+target_link_libraries(http base network crypto)
